@@ -1,18 +1,6 @@
-// ============================================================
-// Controle de Gastos — App completo
-// Dependências: @supabase/supabase-js (instalar via npm)
-//
-// Configuração: substitua as duas constantes abaixo com os
-// dados do seu projeto no Supabase (Settings > API)
-// ============================================================
-
 import { useState, useEffect, useCallback } from "react";
-import { createClient } from "@supabase/supabase-js";
-
-const SUPABASE_URL = "https://SEU_PROJETO.supabase.co";
-const SUPABASE_ANON_KEY = "SUA_ANON_KEY";
-
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+import { supabase } from "./supabase.js";
+import "./index.css";
 
 const MESES = [
   "Jan", "Fev", "Mar", "Abr", "Mai", "Jun",
@@ -69,9 +57,7 @@ function useGastos(anoSelecionado) {
       .select("*")
       .eq("ano_id", anoId);
     const mapa = {};
-    (data || []).forEach((s) => {
-      mapa[s.mes] = s;
-    });
+    (data || []).forEach((s) => { mapa[s.mes] = s; });
     setSalarios(mapa);
   }, []);
 
@@ -101,12 +87,7 @@ function useGastos(anoSelecionado) {
   }, [anoSelecionado, carregarLancamentos, carregarSalarios, carregarGastosAnuais]);
 
   return {
-    anos,
-    categorias,
-    lancamentos,
-    salarios,
-    gastosAnuais,
-    loading,
+    anos, categorias, lancamentos, salarios, gastosAnuais, loading,
     recarregarLancamentos: () => carregarLancamentos(anoSelecionado?.id),
     recarregarSalarios: () => carregarSalarios(anoSelecionado?.id),
     recarregarGastosAnuais: () => carregarGastosAnuais(anoSelecionado?.id),
@@ -116,17 +97,14 @@ function useGastos(anoSelecionado) {
 }
 
 // ============================================================
-// COMPONENTE — campo de salário do mês (inline no dashboard)
+// COMPONENTE — campo de salário
 // ============================================================
-function CampSalario({ anoId, mes, salario, onSalvo }) {
+function CampoSalario({ anoId, mes, salario, onSalvo }) {
   const [editando, setEditando] = useState(false);
   const [valor, setValor] = useState("");
   const [salvando, setSalvando] = useState(false);
 
-  const iniciar = () => {
-    setValor(salario ? String(salario.valor) : "");
-    setEditando(true);
-  };
+  const iniciar = () => { setValor(salario ? String(salario.valor) : ""); setEditando(true); };
 
   const salvar = async () => {
     const num = parseFloat(valor.replace(",", "."));
@@ -140,10 +118,7 @@ function CampSalario({ anoId, mes, salario, onSalvo }) {
         await supabase.from("salario_mensal").insert({ ano_id: anoId, mes, valor: num });
       }
       onSalvo();
-    } finally {
-      setSalvando(false);
-      setEditando(false);
-    }
+    } finally { setSalvando(false); setEditando(false); }
   };
 
   if (editando) {
@@ -154,10 +129,7 @@ function CampSalario({ anoId, mes, salario, onSalvo }) {
         value={valor}
         onChange={(e) => setValor(e.target.value)}
         onBlur={salvar}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") salvar();
-          if (e.key === "Escape") setEditando(false);
-        }}
+        onKeyDown={(e) => { if (e.key === "Enter") salvar(); if (e.key === "Escape") setEditando(false); }}
         disabled={salvando}
         placeholder="0,00"
       />
@@ -166,14 +138,14 @@ function CampSalario({ anoId, mes, salario, onSalvo }) {
 
   return (
     <div style={s.salarioDisplay} onClick={iniciar} title="Clique para editar">
-      {salario ? fmt(salario.valor) : <span style={{ color: "#bbb" }}>Clique para informar</span>}
+      {salario ? fmt(salario.valor) : <span style={{ color: "#bbb", fontSize: 16, fontWeight: 500 }}>Clique para informar o salário</span>}
       <span style={s.salarioEditar}>✏️</span>
     </div>
   );
 }
 
 // ============================================================
-// COMPONENTE — Dashboard do mês selecionado
+// COMPONENTE — Dashboard
 // ============================================================
 function Dashboard({ categorias, lancamentos, salarios, anoId, mes, onSalarioSalvo }) {
   const salario = salarios[mes];
@@ -185,44 +157,36 @@ function Dashboard({ categorias, lancamentos, salarios, anoId, mes, onSalarioSal
 
   const gastos = categorias
     .filter((c) => c.tipo !== "recebimento")
-    .reduce((acc, c) => {
-      const l = lancamentos[`${c.id}-${mes}`];
-      return acc + (l ? Number(l.valor) : 0);
-    }, 0);
+    .reduce((acc, c) => { const l = lancamentos[`${c.id}-${mes}`]; return acc + (l ? Number(l.valor) : 0); }, 0);
 
   const recebimentos = categorias
     .filter((c) => c.tipo === "recebimento")
-    .reduce((acc, c) => {
-      const l = lancamentos[`${c.id}-${mes}`];
-      return acc + (l ? Number(l.valor) : 0);
-    }, 0);
+    .reduce((acc, c) => { const l = lancamentos[`${c.id}-${mes}`]; return acc + (l ? Number(l.valor) : 0); }, 0);
 
   const sobra = salarioValor - previsto;
   const saldo = salarioValor + recebimentos - gastos;
 
   return (
     <div style={s.dashboardWrapper}>
-      {/* Salário */}
       <div style={s.salarioCard}>
         <div style={s.salarioTopo}>
-          <span style={s.salarioLabel}>Salário do mês</span>
+          <span style={s.salarioLabel}>Salário — {MESES[mes - 1]}</span>
           {salarioValor > 0 && previsto > 0 && (
-            <span style={{ fontSize: 11, color: sobra >= 0 ? "#2ecc71" : "#e05c5c", fontWeight: 600 }}>
-              {sobra >= 0 ? `Sobra ${fmt(sobra)} após contas` : `Falta ${fmt(Math.abs(sobra))} para cobrir contas`}
+            <span style={{ fontSize: 12, color: sobra >= 0 ? "#2ecc71" : "#e05c5c", fontWeight: 700 }}>
+              {sobra >= 0 ? `Sobra ${fmt(sobra)} após as contas` : `Falta ${fmt(Math.abs(sobra))} para cobrir as contas`}
             </span>
           )}
         </div>
-        <CampSalario anoId={anoId} mes={mes} salario={salario} onSalvo={onSalarioSalvo} />
+        <CampoSalario anoId={anoId} mes={mes} salario={salario} onSalvo={onSalarioSalvo} />
       </div>
 
-      {/* Cards */}
       <div style={s.dashboard}>
         <Card label="Previsto" valor={previsto} cor="#6c63ff"
-          sub={salarioValor > 0 ? `${previsto > 0 ? Math.round((previsto / salarioValor) * 100) : 0}% do salário` : null} />
+          sub={salarioValor > 0 ? `${Math.round((previsto / salarioValor) * 100)}% do salário` : null} />
         <Card label="Realizado" valor={gastos} cor="#e05c5c"
-          sub={salarioValor > 0 ? `${gastos > 0 ? Math.round((gastos / salarioValor) * 100) : 0}% do salário` : null} />
+          sub={salarioValor > 0 ? `${Math.round((gastos / salarioValor) * 100)}% do salário` : null} />
         <Card label="Recebido" valor={recebimentos} cor="#2ecc71" />
-        <Card label="Saldo real" valor={saldo} cor={saldo >= 0 ? "#2ecc71" : "#e05c5c"}
+        <Card label="Saldo Real" valor={saldo} cor={saldo >= 0 ? "#2ecc71" : "#e05c5c"}
           sub={salarioValor > 0 ? "salário + recebidos − gastos" : "informe o salário para calcular"} />
       </div>
     </div>
@@ -240,17 +204,12 @@ function Card({ label, valor, cor, sub }) {
 }
 
 // ============================================================
-// COMPONENTE — célula editável de lançamento
+// COMPONENTE — célula editável
 // ============================================================
 function CelulaLancamento({ categoriaId, anoId, mes, lancamento, onSalvo }) {
   const [editando, setEditando] = useState(false);
   const [valor, setValor] = useState("");
   const [salvando, setSalvando] = useState(false);
-
-  const iniciarEdicao = () => {
-    setValor(lancamento ? String(lancamento.valor) : "");
-    setEditando(true);
-  };
 
   const salvar = async () => {
     const num = parseFloat(valor.replace(",", "."));
@@ -262,51 +221,35 @@ function CelulaLancamento({ categoriaId, anoId, mes, lancamento, onSalvo }) {
       } else if (lancamento) {
         await supabase.from("lancamento_mensal").update({ valor: num }).eq("id", lancamento.id);
       } else {
-        await supabase.from("lancamento_mensal").insert({
-          categoria_id: categoriaId,
-          ano_id: anoId,
-          mes,
-          valor: num,
-        });
+        await supabase.from("lancamento_mensal").insert({ categoria_id: categoriaId, ano_id: anoId, mes, valor: num });
       }
       onSalvo();
-    } finally {
-      setSalvando(false);
-      setEditando(false);
-    }
+    } finally { setSalvando(false); setEditando(false); }
   };
 
   if (editando) {
     return (
       <input
-        autoFocus
-        style={s.celulaInput}
-        value={valor}
+        autoFocus style={s.celulaInput} value={valor}
         onChange={(e) => setValor(e.target.value)}
         onBlur={salvar}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") salvar();
-          if (e.key === "Escape") setEditando(false);
-        }}
-        disabled={salvando}
-        placeholder="0,00"
+        onKeyDown={(e) => { if (e.key === "Enter") salvar(); if (e.key === "Escape") setEditando(false); }}
+        disabled={salvando} placeholder="0,00"
       />
     );
   }
 
   return (
-    <div
-      style={{ ...s.celula, color: lancamento ? "#1a1a2e" : "#bbb", cursor: "pointer" }}
-      onClick={iniciarEdicao}
-      title="Clique para editar"
-    >
+    <div style={{ ...s.celula, color: lancamento ? "#1a1a2e" : "#ccc", cursor: "pointer" }}
+      onClick={() => { setValor(lancamento ? String(lancamento.valor) : ""); setEditando(true); }}
+      title="Clique para editar">
       {lancamento ? fmt(lancamento.valor) : "·"}
     </div>
   );
 }
 
 // ============================================================
-// COMPONENTE — Tabela principal de lançamentos
+// COMPONENTE — Tabela de lançamentos
 // ============================================================
 function TabelaLancamentos({ categorias, lancamentos, anoId, onSalvo, mesFoco }) {
   const grupos = [
@@ -323,16 +266,11 @@ function TabelaLancamentos({ categorias, lancamentos, anoId, onSalvo, mesFoco })
             <th style={{ ...s.th, textAlign: "left", minWidth: 160 }}>Categoria</th>
             <th style={{ ...s.th, color: "#6c63ff" }}>Previsto</th>
             {MESES.map((m, i) => (
-              <th
-                key={i}
-                style={{
-                  ...s.th,
-                  background: i + 1 === mesFoco ? "#6c63ff11" : "transparent",
-                  color: i + 1 === mesFoco ? "#6c63ff" : "#888",
-                }}
-              >
-                {m}
-              </th>
+              <th key={i} style={{
+                ...s.th,
+                background: i + 1 === mesFoco ? "#6c63ff11" : "transparent",
+                color: i + 1 === mesFoco ? "#6c63ff" : "#aaa",
+              }}>{m}</th>
             ))}
           </tr>
         </thead>
@@ -354,11 +292,9 @@ function TabelaLancamentos({ categorias, lancamentos, anoId, onSalvo, mesFoco })
                     {MESES.map((_, i) => {
                       const mes = i + 1;
                       return (
-                        <td key={mes} style={{ padding: 0, background: mes === mesFoco ? "#6c63ff08" : "transparent" }}>
+                        <td key={mes} style={{ padding: 0, background: mes === mesFoco ? "#6c63ff06" : "transparent" }}>
                           <CelulaLancamento
-                            categoriaId={cat.id}
-                            anoId={anoId}
-                            mes={mes}
+                            categoriaId={cat.id} anoId={anoId} mes={mes}
                             lancamento={lancamentos[`${cat.id}-${mes}`]}
                             onSalvo={onSalvo}
                           />
@@ -379,6 +315,26 @@ function TabelaLancamentos({ categorias, lancamentos, anoId, onSalvo, mesFoco })
 // ============================================================
 // COMPONENTE — Gastos Anuais
 // ============================================================
+function EditableValor({ valor, onSalvar }) {
+  const [editando, setEditando] = useState(false);
+  const [v, setV] = useState("");
+
+  if (editando) {
+    return (
+      <input autoFocus style={s.celulaInput} value={v}
+        onChange={(e) => setV(e.target.value)}
+        onBlur={() => { onSalvar(v); setEditando(false); }}
+        onKeyDown={(e) => { if (e.key === "Enter") { onSalvar(v); setEditando(false); } if (e.key === "Escape") setEditando(false); }}
+      />
+    );
+  }
+  return (
+    <div style={{ ...s.celula, cursor: "pointer" }} onClick={() => { setV(valor ?? ""); setEditando(true); }}>
+      {fmt(valor)}
+    </div>
+  );
+}
+
 function GastosAnuais({ gastosAnuais, anoId, onSalvo }) {
   const [novo, setNovo] = useState({ descricao: "", valor_previsto: "", valor_realizado: "" });
   const [salvando, setSalvando] = useState(false);
@@ -387,8 +343,7 @@ function GastosAnuais({ gastosAnuais, anoId, onSalvo }) {
     if (!novo.descricao) return;
     setSalvando(true);
     await supabase.from("gasto_anual").insert({
-      ano_id: anoId,
-      descricao: novo.descricao,
+      ano_id: anoId, descricao: novo.descricao,
       valor_previsto: parseFloat(novo.valor_previsto) || null,
       valor_realizado: parseFloat(novo.valor_realizado) || null,
       ordem: gastosAnuais.length + 1,
@@ -400,10 +355,7 @@ function GastosAnuais({ gastosAnuais, anoId, onSalvo }) {
 
   const atualizarCampo = async (id, campo, valor) => {
     const num = parseFloat(String(valor).replace(",", "."));
-    await supabase
-      .from("gasto_anual")
-      .update({ [campo]: isNaN(num) ? null : num })
-      .eq("id", id);
+    await supabase.from("gasto_anual").update({ [campo]: isNaN(num) ? null : num }).eq("id", id);
     onSalvo();
   };
 
@@ -426,17 +378,9 @@ function GastosAnuais({ gastosAnuais, anoId, onSalvo }) {
           {gastosAnuais.map((g) => (
             <tr key={g.id} style={s.tr}>
               <td style={s.tdNome}>{g.descricao}</td>
-              <td style={s.celula}>
-                <EditableValor valor={g.valor_previsto} onSalvar={(v) => atualizarCampo(g.id, "valor_previsto", v)} />
-              </td>
-              <td style={s.celula}>
-                <EditableValor valor={g.valor_realizado} onSalvar={(v) => atualizarCampo(g.id, "valor_realizado", v)} />
-              </td>
-              <td style={{
-                ...s.celula,
-                color: (g.valor_previsto - g.valor_realizado) >= 0 ? "#2ecc71" : "#e05c5c",
-                fontWeight: 600,
-              }}>
+              <td style={s.celula}><EditableValor valor={g.valor_previsto} onSalvar={(v) => atualizarCampo(g.id, "valor_previsto", v)} /></td>
+              <td style={s.celula}><EditableValor valor={g.valor_realizado} onSalvar={(v) => atualizarCampo(g.id, "valor_realizado", v)} /></td>
+              <td style={{ ...s.celula, color: (g.valor_previsto - g.valor_realizado) >= 0 ? "#2ecc71" : "#e05c5c", fontWeight: 600 }}>
                 {fmt((g.valor_previsto || 0) - (g.valor_realizado || 0))}
               </td>
             </tr>
@@ -445,10 +389,7 @@ function GastosAnuais({ gastosAnuais, anoId, onSalvo }) {
             <td style={{ ...s.tdNome, fontWeight: 700 }}>Total</td>
             <td style={{ ...s.celula, fontWeight: 700 }}>{fmt(totalPrevisto)}</td>
             <td style={{ ...s.celula, fontWeight: 700 }}>{fmt(totalRealizado)}</td>
-            <td style={{
-              ...s.celula, fontWeight: 700,
-              color: (totalPrevisto - totalRealizado) >= 0 ? "#2ecc71" : "#e05c5c",
-            }}>
+            <td style={{ ...s.celula, fontWeight: 700, color: (totalPrevisto - totalRealizado) >= 0 ? "#2ecc71" : "#e05c5c" }}>
               {fmt(totalPrevisto - totalRealizado)}
             </td>
           </tr>
@@ -458,17 +399,15 @@ function GastosAnuais({ gastosAnuais, anoId, onSalvo }) {
                 onChange={(e) => setNovo({ ...novo, descricao: e.target.value })} />
             </td>
             <td style={{ padding: "6px 8px" }}>
-              <input style={s.inputSimples} placeholder="Previsto" value={novo.valor_previsto}
+              <input style={{ ...s.inputSimples, textAlign: "right" }} placeholder="Previsto" value={novo.valor_previsto}
                 onChange={(e) => setNovo({ ...novo, valor_previsto: e.target.value })} />
             </td>
             <td style={{ padding: "6px 8px" }}>
-              <input style={s.inputSimples} placeholder="Realizado" value={novo.valor_realizado}
+              <input style={{ ...s.inputSimples, textAlign: "right" }} placeholder="Realizado" value={novo.valor_realizado}
                 onChange={(e) => setNovo({ ...novo, valor_realizado: e.target.value })} />
             </td>
             <td style={{ padding: "6px 8px" }}>
-              <button style={s.btnPrimario} onClick={salvarNovo} disabled={salvando || !novo.descricao}>
-                Adicionar
-              </button>
+              <button style={s.btnPrimario} onClick={salvarNovo} disabled={salvando || !novo.descricao}>Adicionar</button>
             </td>
           </tr>
         </tbody>
@@ -477,34 +416,8 @@ function GastosAnuais({ gastosAnuais, anoId, onSalvo }) {
   );
 }
 
-function EditableValor({ valor, onSalvar }) {
-  const [editando, setEditando] = useState(false);
-  const [v, setV] = useState("");
-
-  if (editando) {
-    return (
-      <input
-        autoFocus
-        style={s.celulaInput}
-        value={v}
-        onChange={(e) => setV(e.target.value)}
-        onBlur={() => { onSalvar(v); setEditando(false); }}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") { onSalvar(v); setEditando(false); }
-          if (e.key === "Escape") setEditando(false);
-        }}
-      />
-    );
-  }
-  return (
-    <div style={{ ...s.celula, cursor: "pointer" }} onClick={() => { setV(valor ?? ""); setEditando(true); }}>
-      {fmt(valor)}
-    </div>
-  );
-}
-
 // ============================================================
-// COMPONENTE — Modal para adicionar categoria
+// COMPONENTE — Modal nova categoria
 // ============================================================
 function ModalNovaCategoria({ onFechar, onSalvo, totalCategorias }) {
   const [form, setForm] = useState({ nome: "", tipo: "fixa", valor_previsto: "" });
@@ -514,8 +427,7 @@ function ModalNovaCategoria({ onFechar, onSalvo, totalCategorias }) {
     if (!form.nome) return;
     setSalvando(true);
     await supabase.from("categoria").insert({
-      nome: form.nome,
-      tipo: form.tipo,
+      nome: form.nome, tipo: form.tipo,
       valor_previsto: form.tipo !== "recebimento" ? parseFloat(form.valor_previsto) || null : null,
       ordem: totalCategorias + 1,
     });
@@ -529,8 +441,8 @@ function ModalNovaCategoria({ onFechar, onSalvo, totalCategorias }) {
       <div style={s.modal}>
         <h3 style={{ margin: "0 0 20px", color: "#1a1a2e" }}>Nova Categoria</h3>
         <label style={s.label}>Nome</label>
-        <input style={s.input} value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })}
-          placeholder="Ex: Streaming" autoFocus />
+        <input style={s.input} value={form.nome} autoFocus
+          onChange={(e) => setForm({ ...form, nome: e.target.value })} placeholder="Ex: Streaming" />
         <label style={s.label}>Tipo</label>
         <select style={s.input} value={form.tipo} onChange={(e) => setForm({ ...form, tipo: e.target.value })}>
           <option value="fixa">Fixa</option>
@@ -607,9 +519,7 @@ export default function App() {
                 ...s.anoBtn,
                 background: anoSelecionado?.id === a.id ? "#6c63ff" : "transparent",
                 color: anoSelecionado?.id === a.id ? "#fff" : "#6c63ff",
-              }} onClick={() => setAnoSelecionado(a)}>
-                {a.ano}
-              </button>
+              }} onClick={() => setAnoSelecionado(a)}>{a.ano}</button>
             ))}
             <input style={s.inputAno} placeholder="+ Ano" value={novoAno}
               onChange={(e) => setNovoAno(e.target.value)}
@@ -625,7 +535,7 @@ export default function App() {
           <button key={a} style={{
             ...s.aba,
             borderBottom: aba === a ? "2px solid #6c63ff" : "2px solid transparent",
-            color: aba === a ? "#6c63ff" : "#888",
+            color: aba === a ? "#6c63ff" : "#aaa",
           }} onClick={() => setAba(a)}>
             {a === "mensal" ? "Mensal" : "Anuais"}
           </button>
@@ -644,26 +554,19 @@ export default function App() {
                     ...s.mesBtn,
                     background: mesFoco === i + 1 ? "#6c63ff" : "transparent",
                     color: mesFoco === i + 1 ? "#fff" : "#555",
-                  }} onClick={() => setMesFoco(i + 1)}>
-                    {m}
-                  </button>
+                  }} onClick={() => setMesFoco(i + 1)}>{m}</button>
                 ))}
               </div>
 
               <Dashboard
-                categorias={categorias}
-                lancamentos={lancamentos}
-                salarios={salarios}
-                anoId={anoSelecionado?.id}
-                mes={mesFoco}
-                onSalarioSalvo={recarregarSalarios}
+                categorias={categorias} lancamentos={lancamentos}
+                salarios={salarios} anoId={anoSelecionado?.id}
+                mes={mesFoco} onSalarioSalvo={recarregarSalarios}
               />
 
               <TabelaLancamentos
-                categorias={categorias}
-                lancamentos={lancamentos}
-                anoId={anoSelecionado?.id}
-                onSalvo={recarregarLancamentos}
+                categorias={categorias} lancamentos={lancamentos}
+                anoId={anoSelecionado?.id} onSalvo={recarregarLancamentos}
                 mesFoco={mesFoco}
               />
             </>
@@ -701,41 +604,41 @@ const s = {
   logo: { fontSize: 22 },
   titulo: { fontWeight: 700, fontSize: 18, color: "#1a1a2e", letterSpacing: "-0.3px" },
   anoSelector: { display: "flex", alignItems: "center", gap: 6 },
-  anoBtn: { border: "1px solid #6c63ff", borderRadius: 6, padding: "4px 10px", fontSize: 13, cursor: "pointer", fontWeight: 600, transition: "all 0.15s" },
+  anoBtn: { border: "1.5px solid #6c63ff", borderRadius: 6, padding: "4px 10px", fontSize: 13, cursor: "pointer", fontWeight: 600, transition: "all 0.15s" },
   inputAno: { border: "1px solid #ddd", borderRadius: 6, padding: "4px 8px", fontSize: 13, width: 56, textAlign: "center", outline: "none" },
-  abas: { display: "flex", gap: 0, padding: "0 24px", background: "#fff", borderBottom: "1px solid #eee" },
+  abas: { display: "flex", padding: "0 24px", background: "#fff", borderBottom: "1px solid #eee" },
   aba: { padding: "12px 20px", background: "none", border: "none", fontSize: 14, fontWeight: 600, cursor: "pointer", transition: "color 0.15s" },
   main: { padding: "20px 16px", maxWidth: 1400, margin: "0 auto" },
   meses: { display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 16 },
-  mesBtn: { padding: "5px 12px", border: "1px solid #6c63ff33", borderRadius: 20, fontSize: 12, fontWeight: 600, cursor: "pointer", transition: "all 0.15s" },
-  dashboardWrapper: { marginBottom: 24 },
+  mesBtn: { padding: "5px 12px", border: "1.5px solid #6c63ff33", borderRadius: 20, fontSize: 12, fontWeight: 600, cursor: "pointer", transition: "all 0.15s" },
+  dashboardWrapper: { marginBottom: 20 },
   salarioCard: { background: "#fff", borderRadius: 12, padding: "16px 20px", marginBottom: 10, boxShadow: "0 1px 4px #0001", display: "flex", flexDirection: "column", gap: 8 },
   salarioTopo: { display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 6 },
-  salarioLabel: { fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px", color: "#999" },
-  salarioDisplay: { display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 26, fontWeight: 700, color: "#1a1a2e", letterSpacing: "-0.5px" },
-  salarioEditar: { fontSize: 14, opacity: 0.4 },
-  salarioInput: { fontSize: 26, fontWeight: 700, border: "none", borderBottom: "2px solid #6c63ff", outline: "none", background: "transparent", color: "#1a1a2e", width: "100%", padding: "2px 0" },
-  dashboard: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12 },
-  card: { background: "#fff", borderRadius: 12, padding: "16px 20px", display: "flex", flexDirection: "column", gap: 4, boxShadow: "0 1px 4px #0001" },
+  salarioLabel: { fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px", color: "#aaa" },
+  salarioDisplay: { display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 26, fontWeight: 800, color: "#1a1a2e", letterSpacing: "-1px" },
+  salarioEditar: { fontSize: 14, opacity: 0.3 },
+  salarioInput: { fontSize: 26, fontWeight: 800, border: "none", borderBottom: "2px solid #6c63ff", outline: "none", background: "transparent", color: "#1a1a2e", width: "100%", padding: "2px 0", letterSpacing: "-1px" },
+  dashboard: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10 },
+  card: { background: "#fff", borderRadius: 12, padding: "16px 18px", display: "flex", flexDirection: "column", gap: 4, boxShadow: "0 1px 4px #0001" },
   cardValor: { fontSize: 20, fontWeight: 700, letterSpacing: "-0.5px" },
-  cardLabel: { fontSize: 12, color: "#999", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.5px" },
-  cardSub: { fontSize: 11, color: "#bbb", marginTop: 2 },
+  cardLabel: { fontSize: 10, color: "#aaa", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.5px" },
+  cardSub: { fontSize: 10, color: "#ccc", marginTop: 2 },
   tabelaWrapper: { background: "#fff", borderRadius: 12, boxShadow: "0 1px 4px #0001", overflowX: "auto" },
   tabela: { width: "100%", borderCollapse: "collapse", fontSize: 13 },
-  th: { padding: "10px 8px", fontWeight: 600, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.5px", borderBottom: "2px solid #f0f0f8", whiteSpace: "nowrap", textAlign: "right" },
-  grupoHeader: { padding: "8px 12px", fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.8px", color: "#6c63ff", background: "#f7f7ff", borderTop: "1px solid #eee" },
+  th: { padding: "10px 8px", fontWeight: 600, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.5px", borderBottom: "2px solid #f0f0f8", whiteSpace: "nowrap", textAlign: "right" },
+  grupoHeader: { padding: "8px 12px", fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.8px", color: "#6c63ff", background: "#f7f7ff", borderTop: "1px solid #eee" },
   tr: { borderBottom: "1px solid #f5f5f5" },
   tdNome: { padding: "8px 12px", fontWeight: 500, whiteSpace: "nowrap", color: "#333" },
   celula: { padding: "8px", textAlign: "right", whiteSpace: "nowrap", fontSize: 13 },
   celulaInput: { width: "100%", border: "none", borderBottom: "2px solid #6c63ff", outline: "none", textAlign: "right", fontSize: 13, padding: "6px 8px", background: "#f7f7ff", boxSizing: "border-box" },
   anuaisWrapper: { background: "#fff", borderRadius: 12, padding: 24, boxShadow: "0 1px 4px #0001" },
   secaoTitulo: { margin: "0 0 16px", fontSize: 16, fontWeight: 700, color: "#1a1a2e" },
-  loading: { display: "flex", justifyContent: "center", padding: 60, color: "#999", fontSize: 14 },
+  loading: { display: "flex", justifyContent: "center", padding: 60, color: "#aaa", fontSize: 14 },
   overlay: { position: "fixed", inset: 0, background: "#0005", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 },
   modal: { background: "#fff", borderRadius: 16, padding: 28, width: 360, maxWidth: "90vw", boxShadow: "0 8px 40px #0002" },
-  label: { display: "block", fontSize: 12, fontWeight: 600, color: "#666", marginBottom: 4, marginTop: 14, textTransform: "uppercase", letterSpacing: "0.4px" },
-  input: { width: "100%", border: "1px solid #ddd", borderRadius: 8, padding: "9px 12px", fontSize: 14, outline: "none", boxSizing: "border-box", transition: "border-color 0.15s" },
-  inputSimples: { width: "100%", border: "1px solid #eee", borderRadius: 6, padding: "6px 8px", fontSize: 13, outline: "none", boxSizing: "border-box" },
-  btnPrimario: { background: "#6c63ff", color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" },
-  btnSecundario: { background: "transparent", color: "#666", border: "1px solid #ddd", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer" },
+  label: { display: "block", fontSize: 11, fontWeight: 700, color: "#888", marginBottom: 4, marginTop: 14, textTransform: "uppercase", letterSpacing: "0.4px" },
+  input: { width: "100%", border: "1.5px solid #ddd", borderRadius: 8, padding: "9px 12px", fontSize: 14, outline: "none", boxSizing: "border-box", fontFamily: "inherit" },
+  inputSimples: { width: "100%", border: "1px solid #eee", borderRadius: 6, padding: "6px 8px", fontSize: 13, outline: "none", boxSizing: "border-box", fontFamily: "inherit" },
+  btnPrimario: { background: "#6c63ff", color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap", fontFamily: "inherit" },
+  btnSecundario: { background: "transparent", color: "#666", border: "1.5px solid #ddd", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" },
 };
