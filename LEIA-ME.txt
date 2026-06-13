@@ -1,0 +1,19 @@
+=== CONTROLE DE GASTOS ===
+
+ARQUIVOS DESTA PASTA:
+- src/App.jsx          → código do sistema (coloca em src/ do projeto Vite)
+- supabase-schema.sql  → script principal do banco (roda primeiro)
+- salario.sql          → script adicional para o salário (roda depois)
+- LEIA-ME.txt          → este arquivo
+
+PASSO A PASSO:
+1. No Supabase: rode supabase-schema.sql no SQL Editor
+2. No Supabase: rode salario.sql no SQL Editor (logo após)
+3. No App.jsx: substitua SUPABASE_URL e SUPABASE_ANON_KEY pelos seus dados
+4. Siga o guia completo (GuiaControleDeGastos.docx) para o resto
+
+CAMPO SALÁRIO:
+- Aparece no topo do dashboard, acima dos cards
+- Clique nele para digitar o salário do mês e pressione Enter
+- O sistema mostra automaticamente quanto sobra após as contas previstas
+- Os cards de Previsto e Realizado também mostram o % do salário
