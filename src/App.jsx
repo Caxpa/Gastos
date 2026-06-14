@@ -1,15 +1,16 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "./supabase.js";
 import "./index.css";
 
 const MESES = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
 const TIPOS = { fixa: "Fixa", variavel: "Variável", recebimento: "Recebimento" };
+const mesAtual = new Date().getMonth() + 1;
 
 const fmt = (v) =>
   v == null ? "—" : Number(v).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
 // ============================================================
-// HOOK
+// HOOK PRINCIPAL
 // ============================================================
 function useGastos(anoSelecionado) {
   const [anos, setAnos] = useState([]);
@@ -17,6 +18,7 @@ function useGastos(anoSelecionado) {
   const [lancamentos, setLancamentos] = useState({});
   const [salarios, setSalarios] = useState({});
   const [gastosAnuais, setGastosAnuais] = useState([]);
+  const [mesesVisiveis, setMesesVisiveis] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const carregarAnos = useCallback(async () => {
@@ -51,26 +53,94 @@ function useGastos(anoSelecionado) {
     setGastosAnuais(data || []);
   }, []);
 
+  const carregarMesesVisiveis = useCallback(async (anoId) => {
+    if (!anoId) return;
+    const { data } = await supabase.from("preferencia_colunas").select("*").eq("ano_id", anoId).single();
+    if (data) {
+      setMesesVisiveis(data.meses_visiveis);
+    } else {
+      const proximo = mesAtual === 12 ? 1 : mesAtual + 1;
+      const padrao = [mesAtual, proximo];
+      await supabase.from("preferencia_colunas").insert({ ano_id: anoId, meses_visiveis: padrao });
+      setMesesVisiveis(padrao);
+    }
+  }, []);
+
+  const salvarMesesVisiveis = useCallback(async (anoId, meses) => {
+    await supabase.from("preferencia_colunas")
+      .upsert({ ano_id: anoId, meses_visiveis: meses, updated_at: new Date().toISOString() }, { onConflict: "ano_id" });
+    setMesesVisiveis(meses);
+  }, []);
+
   useEffect(() => { carregarAnos(); carregarCategorias(); }, [carregarAnos, carregarCategorias]);
 
   useEffect(() => {
     if (!anoSelecionado) return;
     setLoading(true);
+    setMesesVisiveis(null);
     Promise.all([
       carregarLancamentos(anoSelecionado.id),
       carregarSalarios(anoSelecionado.id),
       carregarGastosAnuais(anoSelecionado.id),
+      carregarMesesVisiveis(anoSelecionado.id),
     ]).finally(() => setLoading(false));
-  }, [anoSelecionado, carregarLancamentos, carregarSalarios, carregarGastosAnuais]);
+  }, [anoSelecionado, carregarLancamentos, carregarSalarios, carregarGastosAnuais, carregarMesesVisiveis]);
 
   return {
-    anos, categorias, lancamentos, salarios, gastosAnuais, loading,
+    anos, categorias, lancamentos, salarios, gastosAnuais, mesesVisiveis, loading,
     recarregarLancamentos: () => carregarLancamentos(anoSelecionado?.id),
     recarregarSalarios: () => carregarSalarios(anoSelecionado?.id),
     recarregarGastosAnuais: () => carregarGastosAnuais(anoSelecionado?.id),
     recarregarCategorias: carregarCategorias,
     recarregarAnos: carregarAnos,
+    salvarMesesVisiveis: (meses) => salvarMesesVisiveis(anoSelecionado?.id, meses),
   };
+}
+
+// ============================================================
+// PAINEL DE COLUNAS VISÍVEIS
+// ============================================================
+function PainelColunas({ mesesVisiveis, onSalvar, onFechar }) {
+  const [selecionados, setSelecionados] = useState([...mesesVisiveis].sort((a, b) => a - b));
+
+  const toggle = (mes) =>
+    setSelecionados((prev) =>
+      prev.includes(mes) ? prev.filter((m) => m !== mes) : [...prev, mes].sort((a, b) => a - b)
+    );
+
+  return (
+    <div style={s.overlay}>
+      <div style={{ ...s.modal, width: 400 }}>
+        <h3 style={{ margin: "0 0 6px", color: "#1a1a2e" }}>Colunas visíveis</h3>
+        <p style={{ fontSize: 12, color: "#aaa", marginBottom: 20 }}>Selecione os meses que devem aparecer na tabela.</p>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8, marginBottom: 20 }}>
+          {MESES.map((m, i) => {
+            const mes = i + 1;
+            const ativo = selecionados.includes(mes);
+            return (
+              <button key={mes} onClick={() => toggle(mes)} style={{
+                padding: "10px 6px", borderRadius: 8,
+                border: ativo ? "2px solid #6c63ff" : "2px solid #eee",
+                background: ativo ? "#6c63ff" : "#fff",
+                color: ativo ? "#fff" : "#666",
+                fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "inherit", position: "relative",
+              }}>
+                {m}
+                {mes === mesAtual && <span style={{ position: "absolute", top: 3, right: 4, width: 6, height: 6, borderRadius: "50%", background: ativo ? "#fff" : "#6c63ff" }} />}
+              </button>
+            );
+          })}
+        </div>
+        <div style={{ display: "flex", gap: 8, justifyContent: "space-between" }}>
+          <button style={s.btnSecundario} onClick={() => setSelecionados([1,2,3,4,5,6,7,8,9,10,11,12])}>Mostrar todos</button>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button style={s.btnSecundario} onClick={onFechar}>Cancelar</button>
+            <button style={s.btnPrimario} onClick={() => { onSalvar(selecionados); onFechar(); }} disabled={selecionados.length === 0}>Salvar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // ============================================================
@@ -113,35 +183,78 @@ function CampoSalario({ anoId, mes, salario, onSalvo }) {
 }
 
 // ============================================================
-// DASHBOARD
+// DASHBOARD — com receita prevista e saldo projetado
 // ============================================================
 function Dashboard({ categorias, lancamentos, salarios, anoId, mes, onSalarioSalvo }) {
   const salario = salarios[mes];
   const salarioValor = salario ? Number(salario.valor) : 0;
-  const previsto = categorias.filter((c) => c.tipo !== "recebimento" && c.valor_previsto).reduce((a, c) => a + Number(c.valor_previsto), 0);
-  const gastos = categorias.filter((c) => c.tipo !== "recebimento").reduce((a, c) => { const l = lancamentos[`${c.id}-${mes}`]; return a + (l ? Number(l.valor) : 0); }, 0);
-  const recebimentos = categorias.filter((c) => c.tipo === "recebimento").reduce((a, c) => { const l = lancamentos[`${c.id}-${mes}`]; return a + (l ? Number(l.valor) : 0); }, 0);
-  const sobra = salarioValor - previsto;
-  const saldo = salarioValor + recebimentos - gastos;
+
+  // Previstos
+  const previstoDesp = categorias
+    .filter((c) => c.tipo !== "recebimento" && c.valor_previsto)
+    .reduce((a, c) => a + Number(c.valor_previsto), 0);
+
+  const previstoReceb = categorias
+    .filter((c) => c.tipo === "recebimento" && c.valor_previsto)
+    .reduce((a, c) => a + Number(c.valor_previsto), 0);
+
+  const receitaPrevista = salarioValor + previstoReceb;
+  const sobraPrevistp = receitaPrevista - previstoDesp;
+
+  // Realizados — se não lançado usa previsto
+  const gastosProjetados = categorias
+    .filter((c) => c.tipo !== "recebimento")
+    .reduce((a, c) => {
+      const l = lancamentos[`${c.id}-${mes}`];
+      return a + (l ? Number(l.valor) : (Number(c.valor_previsto) || 0));
+    }, 0);
+
+  const recebimentosProjetados = categorias
+    .filter((c) => c.tipo === "recebimento")
+    .reduce((a, c) => {
+      const l = lancamentos[`${c.id}-${mes}`];
+      return a + (l ? Number(l.valor) : (Number(c.valor_previsto) || 0));
+    }, 0);
+
+  // Realizados puros (para o card de realizado)
+  const gastosRealizados = categorias
+    .filter((c) => c.tipo !== "recebimento")
+    .reduce((a, c) => { const l = lancamentos[`${c.id}-${mes}`]; return a + (l ? Number(l.valor) : 0); }, 0);
+
+  const recebimentosRealizados = categorias
+    .filter((c) => c.tipo === "recebimento")
+    .reduce((a, c) => { const l = lancamentos[`${c.id}-${mes}`]; return a + (l ? Number(l.valor) : 0); }, 0);
+
+  const saldoProjetado = salarioValor + recebimentosProjetados - gastosProjetados;
 
   return (
     <div style={s.dashboardWrapper}>
       <div style={s.salarioCard}>
         <div style={s.salarioTopo}>
           <span style={s.salarioLabel}>Salário — {MESES[mes - 1]}</span>
-          {salarioValor > 0 && previsto > 0 && (
-            <span style={{ fontSize: 12, color: sobra >= 0 ? "#2ecc71" : "#e05c5c", fontWeight: 700 }}>
-              {sobra >= 0 ? `Sobra ${fmt(sobra)} após as contas` : `Falta ${fmt(Math.abs(sobra))} para cobrir as contas`}
+          {receitaPrevista > 0 && previstoDesp > 0 && (
+            <span style={{ fontSize: 12, color: sobraPrevistp >= 0 ? "#2ecc71" : "#e05c5c", fontWeight: 700 }}>
+              {sobraPrevistp >= 0
+                ? `Sobra ${fmt(sobraPrevistp)} após as contas previstas`
+                : `Falta ${fmt(Math.abs(sobraPrevistp))} para cobrir as contas previstas`}
             </span>
           )}
         </div>
         <CampoSalario anoId={anoId} mes={mes} salario={salario} onSalvo={onSalarioSalvo} />
       </div>
+
       <div style={s.dashboard}>
-        <Card label="Previsto" valor={previsto} cor="#6c63ff" sub={salarioValor > 0 ? `${Math.round((previsto / salarioValor) * 100)}% do salário` : null} />
-        <Card label="Realizado" valor={gastos} cor="#e05c5c" sub={salarioValor > 0 ? `${Math.round((gastos / salarioValor) * 100)}% do salário` : null} />
-        <Card label="Recebido" valor={recebimentos} cor="#2ecc71" />
-        <Card label="Saldo Real" valor={saldo} cor={saldo >= 0 ? "#2ecc71" : "#e05c5c"} sub={salarioValor > 0 ? "salário + recebidos − gastos" : "informe o salário para calcular"} />
+        {previstoReceb > 0 && (
+          <Card label="Receita Prevista" valor={receitaPrevista} cor="#6c63ff"
+            sub={`salário + ${fmt(previstoReceb)} de recebimentos`} />
+        )}
+        <Card label="Desp. Previstas" valor={previstoDesp} cor="#6c63ff"
+          sub={receitaPrevista > 0 ? `${Math.round((previstoDesp / receitaPrevista) * 100)}% da receita` : null} />
+        <Card label="Desp. Realizadas" valor={gastosRealizados} cor="#e05c5c"
+          sub={receitaPrevista > 0 ? `${Math.round((gastosRealizados / receitaPrevista) * 100)}% da receita` : null} />
+        <Card label="Recebido" valor={recebimentosRealizados} cor="#2ecc71" />
+        <Card label="Saldo Projetado" valor={saldoProjetado} cor={saldoProjetado >= 0 ? "#2ecc71" : "#e05c5c"}
+          sub="usa previsto onde não há lançamento" />
       </div>
     </div>
   );
@@ -158,9 +271,9 @@ function Card({ label, valor, cor, sub }) {
 }
 
 // ============================================================
-// CÉLULA EDITÁVEL
+// CÉLULA EDITÁVEL — com navegação por Enter
 // ============================================================
-function CelulaLancamento({ categoriaId, anoId, mes, lancamento, onSalvo }) {
+function CelulaLancamento({ categoriaId, anoId, mes, lancamento, onSalvo, onEnter }) {
   const [editando, setEditando] = useState(false);
   const [valor, setValor] = useState("");
   const [salvando, setSalvando] = useState(false);
@@ -181,11 +294,16 @@ function CelulaLancamento({ categoriaId, anoId, mes, lancamento, onSalvo }) {
     } finally { setSalvando(false); setEditando(false); }
   };
 
+  const handleKeyDown = (e) => {
+    if (e.key === "Enter") { salvar().then(() => onEnter && onEnter()); }
+    if (e.key === "Escape") setEditando(false);
+  };
+
   if (editando) {
     return (
       <input autoFocus style={s.celulaInput} value={valor}
-        onChange={(e) => setValor(e.target.value)} onBlur={salvar}
-        onKeyDown={(e) => { if (e.key === "Enter") salvar(); if (e.key === "Escape") setEditando(false); }}
+        onChange={(e) => setValor(e.target.value)}
+        onBlur={salvar} onKeyDown={handleKeyDown}
         disabled={salvando} placeholder="0,00" />
     );
   }
@@ -200,21 +318,54 @@ function CelulaLancamento({ categoriaId, anoId, mes, lancamento, onSalvo }) {
 // ============================================================
 // TABELA DE LANÇAMENTOS
 // ============================================================
-function TabelaLancamentos({ categorias, lancamentos, anoId, onSalvo, mesFoco }) {
+function TabelaLancamentos({ categorias, lancamentos, anoId, onSalvo, mesFoco, mesesVisiveis, onGerenciarColunas }) {
+  const cellRefs = useRef({});
+
   const grupos = [
     { tipo: "fixa", label: "Contas Fixas" },
     { tipo: "variavel", label: "Gastos Variáveis" },
     { tipo: "recebimento", label: "Recebimentos" },
   ];
+
+  const todasCats = grupos.flatMap(({ tipo }) => categorias.filter((c) => c.tipo === tipo));
+  const mesesOrdenados = mesesVisiveis ? [...mesesVisiveis].sort((a, b) => a - b) : [];
+
+  const focarProxima = (categoriaId, mes) => {
+    const idxCat = todasCats.findIndex((c) => c.id === categoriaId);
+    const idxMes = mesesOrdenados.indexOf(mes);
+
+    if (idxCat < todasCats.length - 1) {
+      const proxCat = todasCats[idxCat + 1];
+      const el = cellRefs.current[`${proxCat.id}-${mes}`];
+      if (el) { el.click(); return; }
+    }
+
+    if (idxMes < mesesOrdenados.length - 1) {
+      const proxMes = mesesOrdenados[idxMes + 1];
+      const primeiraCat = todasCats[0];
+      if (primeiraCat) {
+        const el = cellRefs.current[`${primeiraCat.id}-${proxMes}`];
+        if (el) el.click();
+      }
+    }
+  };
+
   return (
     <div style={s.tabelaWrapper}>
+      <div style={s.tabelaHeader}>
+        <button style={s.btnColunas} onClick={onGerenciarColunas}>
+          ⚙️ Colunas ({mesesOrdenados.length}/12)
+        </button>
+      </div>
       <table style={s.tabela}>
         <thead>
           <tr>
             <th style={{ ...s.th, textAlign: "left", minWidth: 160 }}>Categoria</th>
             <th style={{ ...s.th, color: "#6c63ff" }}>Previsto</th>
-            {MESES.map((m, i) => (
-              <th key={i} style={{ ...s.th, background: i + 1 === mesFoco ? "#6c63ff11" : "transparent", color: i + 1 === mesFoco ? "#6c63ff" : "#aaa" }}>{m}</th>
+            {mesesOrdenados.map((mes) => (
+              <th key={mes} style={{ ...s.th, background: mes === mesFoco ? "#6c63ff11" : "transparent", color: mes === mesFoco ? "#6c63ff" : "#aaa" }}>
+                {MESES[mes - 1]}
+              </th>
             ))}
           </tr>
         </thead>
@@ -224,19 +375,23 @@ function TabelaLancamentos({ categorias, lancamentos, anoId, onSalvo, mesFoco })
             if (!cats.length) return null;
             return (
               <>
-                <tr key={`h-${tipo}`}><td colSpan={14} style={s.grupoHeader}>{label}</td></tr>
+                <tr key={`h-${tipo}`}><td colSpan={mesesOrdenados.length + 2} style={s.grupoHeader}>{label}</td></tr>
                 {cats.map((cat) => (
                   <tr key={cat.id} style={s.tr}>
                     <td style={s.tdNome}>{cat.nome}</td>
                     <td style={{ ...s.celula, color: "#6c63ff", fontWeight: 600 }}>{cat.valor_previsto ? fmt(cat.valor_previsto) : "—"}</td>
-                    {MESES.map((_, i) => {
-                      const mes = i + 1;
-                      return (
-                        <td key={mes} style={{ padding: 0, background: mes === mesFoco ? "#6c63ff06" : "transparent" }}>
-                          <CelulaLancamento categoriaId={cat.id} anoId={anoId} mes={mes} lancamento={lancamentos[`${cat.id}-${mes}`]} onSalvo={onSalvo} />
-                        </td>
-                      );
-                    })}
+                    {mesesOrdenados.map((mes) => (
+                      <td key={mes} style={{ padding: 0, background: mes === mesFoco ? "#6c63ff06" : "transparent" }}>
+                        <div ref={(el) => { if (el) cellRefs.current[`${cat.id}-${mes}`] = el; else delete cellRefs.current[`${cat.id}-${mes}`]; }}>
+                          <CelulaLancamento
+                            categoriaId={cat.id} anoId={anoId} mes={mes}
+                            lancamento={lancamentos[`${cat.id}-${mes}`]}
+                            onSalvo={onSalvo}
+                            onEnter={() => focarProxima(cat.id, mes)}
+                          />
+                        </div>
+                      </td>
+                    ))}
                   </tr>
                 ))}
               </>
@@ -340,10 +495,10 @@ function GastosAnuais({ gastosAnuais, anoId, onSalvo }) {
 }
 
 // ============================================================
-// GERENCIAR CATEGORIAS
+// GERENCIAR CATEGORIAS — previsto liberado para recebimentos
 // ============================================================
 function GerenciarCategorias({ categorias, onSalvo }) {
-  const [editando, setEditando] = useState(null); // id da categoria em edição
+  const [editando, setEditando] = useState(null);
   const [form, setForm] = useState({});
   const [salvando, setSalvando] = useState(false);
 
@@ -357,9 +512,8 @@ function GerenciarCategorias({ categorias, onSalvo }) {
   const salvar = async (cat) => {
     setSalvando(true);
     await supabase.from("categoria").update({
-      nome: form.nome,
-      tipo: form.tipo,
-      valor_previsto: form.tipo !== "recebimento" ? parseFloat(String(form.valor_previsto).replace(",", ".")) || null : null,
+      nome: form.nome, tipo: form.tipo,
+      valor_previsto: parseFloat(String(form.valor_previsto).replace(",", ".")) || null,
     }).eq("id", cat.id);
     setSalvando(false);
     setEditando(null);
@@ -367,14 +521,14 @@ function GerenciarCategorias({ categorias, onSalvo }) {
   };
 
   const excluir = async (cat) => {
-    if (!confirm(`Excluir "${cat.nome}"? Todos os lançamentos dessa categoria também serão excluídos.`)) return;
+    if (!confirm(`Excluir "${cat.nome}"? Todos os lançamentos também serão excluídos.`)) return;
     await supabase.from("categoria").update({ ativo: false }).eq("id", cat.id);
     onSalvo();
   };
 
-  const moverOrdem = async (cat, direcao) => {
-    const idx = categorias.findIndex((c) => c.id === cat.id);
-    const alvo = categorias[idx + direcao];
+  const moverOrdem = async (cat, direcao, cats) => {
+    const idx = cats.findIndex((c) => c.id === cat.id);
+    const alvo = cats[idx + direcao];
     if (!alvo) return;
     await Promise.all([
       supabase.from("categoria").update({ ordem: alvo.ordem }).eq("id", cat.id),
@@ -396,7 +550,7 @@ function GerenciarCategorias({ categorias, onSalvo }) {
         const cats = categorias.filter((c) => c.tipo === tipo);
         if (!cats.length) return null;
         return (
-          <div key={tipo} style={{ marginBottom: 24 }}>
+          <div key={tipo} style={{ marginBottom: 28 }}>
             <div style={{ ...s.grupoHeader, borderRadius: 8, marginBottom: 8, display: "inline-block", padding: "4px 12px" }}>{label}</div>
             <table style={s.tabela}>
               <thead>
@@ -413,9 +567,7 @@ function GerenciarCategorias({ categorias, onSalvo }) {
                   <tr key={cat.id} style={s.tr}>
                     {editando === cat.id ? (
                       <>
-                        <td style={{ padding: "6px 8px" }}>
-                          <input style={s.inputSimples} value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} autoFocus />
-                        </td>
+                        <td style={{ padding: "6px 8px" }}><input style={s.inputSimples} value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} autoFocus /></td>
                         <td style={{ padding: "6px 8px" }}>
                           <select style={s.inputSimples} value={form.tipo} onChange={(e) => setForm({ ...form, tipo: e.target.value })}>
                             <option value="fixa">Fixa</option>
@@ -425,30 +577,31 @@ function GerenciarCategorias({ categorias, onSalvo }) {
                         </td>
                         <td style={{ padding: "6px 8px" }}>
                           <input style={{ ...s.inputSimples, textAlign: "right" }}
-                            value={form.tipo === "recebimento" ? "" : form.valor_previsto}
-                            disabled={form.tipo === "recebimento"}
+                            value={form.valor_previsto}
                             onChange={(e) => setForm({ ...form, valor_previsto: e.target.value })}
-                            placeholder={form.tipo === "recebimento" ? "—" : "0,00"} />
+                            placeholder="0,00" />
                         </td>
-                        <td style={{ padding: "6px 8px", textAlign: "center", color: "#aaa", fontSize: 12 }}>{cat.ordem}</td>
-                        <td style={{ padding: "6px 8px", display: "flex", gap: 6, justifyContent: "flex-end" }}>
-                          <button style={s.btnPrimario} onClick={() => salvar(cat)} disabled={salvando}>Salvar</button>
-                          <button style={s.btnSecundario} onClick={cancelar}>Cancelar</button>
+                        <td style={{ ...s.celula, color: "#aaa", fontSize: 12 }}>{cat.ordem}</td>
+                        <td style={{ padding: "6px 8px" }}>
+                          <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+                            <button style={s.btnPrimario} onClick={() => salvar(cat)} disabled={salvando}>Salvar</button>
+                            <button style={s.btnSecundario} onClick={cancelar}>Cancelar</button>
+                          </div>
                         </td>
                       </>
                     ) : (
                       <>
                         <td style={s.tdNome}>{cat.nome}</td>
-                        <td style={{ ...s.celula }}>
+                        <td style={s.celula}>
                           <span style={{ background: tipo === "recebimento" ? "#e6fff2" : tipo === "fixa" ? "#f0efff" : "#fff8ee", color: tipo === "recebimento" ? "#1a7a4a" : tipo === "fixa" ? "#6c63ff" : "#c45000", borderRadius: 4, padding: "2px 8px", fontSize: 11, fontWeight: 700 }}>
                             {TIPOS[cat.tipo]}
                           </span>
                         </td>
                         <td style={{ ...s.celula, color: "#6c63ff", fontWeight: 600 }}>{cat.valor_previsto ? fmt(cat.valor_previsto) : "—"}</td>
-                        <td style={{ ...s.celula }}>
+                        <td style={s.celula}>
                           <div style={{ display: "flex", gap: 2, justifyContent: "flex-end" }}>
-                            <button onClick={() => moverOrdem(cat, -1)} style={s.btnOrdem} disabled={idx === 0} title="Mover para cima">↑</button>
-                            <button onClick={() => moverOrdem(cat, 1)} style={s.btnOrdem} disabled={idx === cats.length - 1} title="Mover para baixo">↓</button>
+                            <button onClick={() => moverOrdem(cat, -1, cats)} style={s.btnOrdem} disabled={idx === 0}>↑</button>
+                            <button onClick={() => moverOrdem(cat, 1, cats)} style={s.btnOrdem} disabled={idx === cats.length - 1}>↓</button>
                           </div>
                         </td>
                         <td style={{ padding: "6px 8px" }}>
@@ -471,7 +624,7 @@ function GerenciarCategorias({ categorias, onSalvo }) {
 }
 
 // ============================================================
-// MODAL NOVA CATEGORIA
+// MODAL NOVA CATEGORIA — previsto para todos os tipos
 // ============================================================
 function ModalNovaCategoria({ onFechar, onSalvo, totalCategorias }) {
   const [form, setForm] = useState({ nome: "", tipo: "fixa", valor_previsto: "" });
@@ -482,7 +635,7 @@ function ModalNovaCategoria({ onFechar, onSalvo, totalCategorias }) {
     setSalvando(true);
     await supabase.from("categoria").insert({
       nome: form.nome, tipo: form.tipo,
-      valor_previsto: form.tipo !== "recebimento" ? parseFloat(form.valor_previsto) || null : null,
+      valor_previsto: parseFloat(form.valor_previsto) || null,
       ordem: totalCategorias + 1,
     });
     setSalvando(false);
@@ -495,19 +648,15 @@ function ModalNovaCategoria({ onFechar, onSalvo, totalCategorias }) {
       <div style={s.modal}>
         <h3 style={{ margin: "0 0 20px", color: "#1a1a2e" }}>Nova Categoria</h3>
         <label style={s.label}>Nome</label>
-        <input style={s.input} value={form.nome} autoFocus onChange={(e) => setForm({ ...form, nome: e.target.value })} placeholder="Ex: Streaming" />
+        <input style={s.input} value={form.nome} autoFocus onChange={(e) => setForm({ ...form, nome: e.target.value })} placeholder="Ex: Freelance" />
         <label style={s.label}>Tipo</label>
         <select style={s.input} value={form.tipo} onChange={(e) => setForm({ ...form, tipo: e.target.value })}>
           <option value="fixa">Fixa</option>
           <option value="variavel">Variável</option>
           <option value="recebimento">Recebimento</option>
         </select>
-        {form.tipo !== "recebimento" && (
-          <>
-            <label style={s.label}>Valor previsto (R$)</label>
-            <input style={s.input} type="number" value={form.valor_previsto} onChange={(e) => setForm({ ...form, valor_previsto: e.target.value })} placeholder="0,00" />
-          </>
-        )}
+        <label style={s.label}>Valor previsto (R$)</label>
+        <input style={s.input} type="number" value={form.valor_previsto} onChange={(e) => setForm({ ...form, valor_previsto: e.target.value })} placeholder="0,00" />
         <div style={{ display: "flex", gap: 10, marginTop: 24 }}>
           <button style={s.btnSecundario} onClick={onFechar}>Cancelar</button>
           <button style={s.btnPrimario} onClick={salvar} disabled={salvando || !form.nome}>{salvando ? "Salvando..." : "Salvar"}</button>
@@ -522,18 +671,18 @@ function ModalNovaCategoria({ onFechar, onSalvo, totalCategorias }) {
 // ============================================================
 export default function App() {
   const anoAtual = new Date().getFullYear();
-  const mesAtual = new Date().getMonth() + 1;
 
   const [anoSelecionado, setAnoSelecionado] = useState(null);
   const [mesFoco, setMesFoco] = useState(mesAtual);
   const [aba, setAba] = useState("mensal");
   const [modalCategoria, setModalCategoria] = useState(false);
+  const [painelColunas, setPainelColunas] = useState(false);
   const [novoAno, setNovoAno] = useState("");
   const [criandoAno, setCriandoAno] = useState(false);
 
-  const { anos, categorias, lancamentos, salarios, gastosAnuais, loading,
+  const { anos, categorias, lancamentos, salarios, gastosAnuais, mesesVisiveis, loading,
     recarregarLancamentos, recarregarSalarios, recarregarGastosAnuais,
-    recarregarCategorias, recarregarAnos } = useGastos(anoSelecionado);
+    recarregarCategorias, recarregarAnos, salvarMesesVisiveis } = useGastos(anoSelecionado);
 
   useEffect(() => {
     if (anos.length && !anoSelecionado) {
@@ -596,7 +745,14 @@ export default function App() {
                 ))}
               </div>
               <Dashboard categorias={categorias} lancamentos={lancamentos} salarios={salarios} anoId={anoSelecionado?.id} mes={mesFoco} onSalarioSalvo={recarregarSalarios} />
-              <TabelaLancamentos categorias={categorias} lancamentos={lancamentos} anoId={anoSelecionado?.id} onSalvo={recarregarLancamentos} mesFoco={mesFoco} />
+              {mesesVisiveis && (
+                <TabelaLancamentos
+                  categorias={categorias} lancamentos={lancamentos}
+                  anoId={anoSelecionado?.id} onSalvo={recarregarLancamentos}
+                  mesFoco={mesFoco} mesesVisiveis={mesesVisiveis}
+                  onGerenciarColunas={() => setPainelColunas(true)}
+                />
+              )}
             </>
           )}
           {aba === "anuais" && <GastosAnuais gastosAnuais={gastosAnuais} anoId={anoSelecionado?.id} onSalvo={recarregarGastosAnuais} />}
@@ -605,6 +761,7 @@ export default function App() {
       )}
 
       {modalCategoria && <ModalNovaCategoria totalCategorias={categorias.length} onFechar={() => setModalCategoria(false)} onSalvo={recarregarCategorias} />}
+      {painelColunas && mesesVisiveis && <PainelColunas mesesVisiveis={mesesVisiveis} onSalvar={salvarMesesVisiveis} onFechar={() => setPainelColunas(false)} />}
     </div>
   );
 }
@@ -640,6 +797,8 @@ const s = {
   cardLabel: { fontSize: 10, color: "#aaa", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.5px" },
   cardSub: { fontSize: 10, color: "#ccc", marginTop: 2 },
   tabelaWrapper: { background: "#fff", borderRadius: 12, boxShadow: "0 1px 4px #0001", overflowX: "auto" },
+  tabelaHeader: { display: "flex", justifyContent: "flex-end", padding: "10px 14px 0" },
+  btnColunas: { background: "transparent", border: "1.5px solid #ddd", borderRadius: 8, padding: "5px 12px", fontSize: 12, fontWeight: 600, color: "#888", cursor: "pointer", fontFamily: "inherit" },
   tabela: { width: "100%", borderCollapse: "collapse", fontSize: 13 },
   th: { padding: "10px 8px", fontWeight: 600, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.5px", borderBottom: "2px solid #f0f0f8", whiteSpace: "nowrap", textAlign: "right" },
   grupoHeader: { padding: "8px 12px", fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.8px", color: "#6c63ff", background: "#f7f7ff", borderTop: "1px solid #eee" },
