@@ -206,16 +206,21 @@ function ResumoMes({ categorias, lancamentos, salarios, anoId, mes, onSalarioSal
   const salvarSalario = async (raw) => {
     const num = parseNum(raw);
     if (num == null) {
-      if (salario) { await supabase.from("salario_mensal").delete().eq("id", salario.id); onSalarioSalvo(); }
+      if (salario) {
+        setSalarios((prev) => { const novo = { ...prev }; delete novo[mes]; return novo; });
+        await supabase.from("salario_mensal").delete().eq("ano_id", anoId).eq("mes", mes);
+      }
       return;
     }
-    if (salario) {
-      setSalarios((prev) => ({ ...prev, [mes]: { ...prev[mes], valor: num } }));
-      await supabase.from("salario_mensal").update({ valor: num }).eq("id", salario.id);
-    } else {
-      const { data } = await supabase.from("salario_mensal").insert({ ano_id: anoId, mes, valor: num }).select().single();
-      if (data) setSalarios((prev) => ({ ...prev, [mes]: data }));
-    }
+    // Atualiza a tela na hora
+    setSalarios((prev) => ({ ...prev, [mes]: { ...(prev[mes] || {}), ano_id: anoId, mes, valor: num } }));
+    // upsert resolve tanto inserir quanto atualizar, usando a chave única (ano_id, mes)
+    const { data } = await supabase
+      .from("salario_mensal")
+      .upsert({ ano_id: anoId, mes, valor: num }, { onConflict: "ano_id,mes" })
+      .select()
+      .single();
+    if (data) setSalarios((prev) => ({ ...prev, [mes]: data }));
   };
 
   const pctGasto = calc.receitaPrevista > 0 ? Math.min(100, Math.round((calc.gastosRealizados / calc.receitaPrevista) * 100)) : 0;
@@ -302,17 +307,17 @@ function ListaLancamentos({ categorias, lancamentos, anoId, mes, onSalvo, setLan
     if (num == null) {
       if (existente) {
         setLancamentos((prev) => { const novo = { ...prev }; delete novo[`${cat.id}-${mes}`]; return novo; });
-        await supabase.from("lancamento_mensal").delete().eq("id", existente.id);
+        await supabase.from("lancamento_mensal").delete().eq("categoria_id", cat.id).eq("ano_id", anoId).eq("mes", mes);
       }
       return;
     }
-    if (existente) {
-      setLancamentos((prev) => ({ ...prev, [`${cat.id}-${mes}`]: { ...existente, valor: num } }));
-      await supabase.from("lancamento_mensal").update({ valor: num }).eq("id", existente.id);
-    } else {
-      const { data } = await supabase.from("lancamento_mensal").insert({ categoria_id: cat.id, ano_id: anoId, mes, valor: num }).select().single();
-      if (data) setLancamentos((prev) => ({ ...prev, [`${cat.id}-${mes}`]: data }));
-    }
+    setLancamentos((prev) => ({ ...prev, [`${cat.id}-${mes}`]: { ...(prev[`${cat.id}-${mes}`] || {}), categoria_id: cat.id, ano_id: anoId, mes, valor: num } }));
+    const { data } = await supabase
+      .from("lancamento_mensal")
+      .upsert({ categoria_id: cat.id, ano_id: anoId, mes, valor: num }, { onConflict: "categoria_id,ano_id,mes" })
+      .select()
+      .single();
+    if (data) setLancamentos((prev) => ({ ...prev, [`${cat.id}-${mes}`]: data }));
   };
 
   const focarProxima = (catId) => {
